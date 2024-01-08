@@ -1,8 +1,11 @@
+import ActionHandler from './ActionHandler.js';
 import JSZip from 'https://cdn.skypack.dev/jszip';
+import MagicGloves from './MagicGloves.js';
 import d from './dominant.js';
 import lf from 'https://cdn.skypack.dev/localforage';
 import structuredFiles from './structuredFiles.js';
 import { nanoid } from 'https://cdn.skypack.dev/nanoid';
+import { showModal } from './util.js';
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js', { type: 'module' }).then(function(registration) {
@@ -15,8 +18,19 @@ if ('serviceWorker' in navigator) {
 class App {
   constructor() {
     window.app = this;
+    this.actions = new ActionHandler(this);
     this.loadSites();
+    requestAnimationFrame(() => {
+      this.iframe.onload = () => {
+        this.gloves = new MagicGloves(this.iframe, this.actions);
+      };
+    });
   }
+
+  get editorWindow() { return this.iframe.contentWindow }
+  get editorDocument() { return this.iframe.contentDocument }
+  get s() { return this.gloves?.s }
+  set s(x) { this.gloves.s = x }
 
   render = () => d.jsx`
     <div class="w-80 h-screen shrink-0 flex flex-col bg-[#2b2d31] text-[#949ba4] shadow-2xl">
@@ -48,7 +62,6 @@ class App {
 
   sites = {};
   files = [];
-  styles = [];
 
   loadSites = () => {
     this.sites = {};
@@ -271,47 +284,41 @@ class RenameDialog {
   };
 }
 
-function makePromise() {
-  let res, rej, p = new Promise((resolve, reject) => {
-    res = resolve;
-    rej = reject;
-  });
-  return [p, res, rej];
-}
-
-async function showModal(x) {
-  let [p, res] = makePromise();
-  document.body.append(x);
-  x.returnValue = '';
-  x.addEventListener('close', () => {
-    x.remove();
-    res([x.returnValue, x.returnValue2]);
-  });
-  x.showModal();
-  return p;
-}
-
 class StylesSidebar {
+  constructor() { window.stylesSidebar = this }
+  get styles() { return app.s ? [...app.s.classList] : [] };
+  rm(x) { app.s.classList.remove(x) }
+
+  onKeyDown = ev => {
+    if (ev.key !== 'Enter') { return }
+    let value = ev.target.value.trim();
+    if (!value) { return }
+    app.s.classList.add(value);
+    ev.target.value = '';
+  };
+
   render = () => d.jsx`
     <div class="flex-1">
         <div class="flex flex-col gap-1 p-3 text-sm">
-            ${d.map(() => app.styles, x => d.jsx`
+            ${d.map(() => this.styles, x => d.jsx`
                 <a class="flex gap-2 justify-between items-center rounded px-3 py-1" href="#">
-                <div class="flex gap-2 items-center">
-                    <i class="nf nf-fa-paint_brush"></i>
-                    <span>${x}</span>
-                </div>
-                <div class="relative top-[-1px] flex gap-2">
-                    <button class="nf nf-fa-trash"></button>
-                </div>
+                    <div class="flex gap-2 items-center">
+                        <i class="nf nf-fa-paint_brush"></i>
+                        <span>${x}</span>
+                    </div>
+                    <div class="relative top-[-1px] flex gap-2">
+                        <button class="nf nf-fa-trash" ${{ onClick: () => this.rm(x) }}></button>
+                    </div>
                 </a>
             `)}
-            <div class="flex gap-2 justify-between items-center rounded px-3 py-1">
-                <div class="flex gap-2 items-center">
-                    <i class="nf nf-fa-plus"></i>
-                    <input class="outline-none bg-transparent" placeholder="add class">
-                </div>
-            </div>
+            ${d.if(() => app.s, d.jsx`
+              <div class="flex gap-2 justify-between items-center rounded px-3 py-1">
+                  <div class="flex gap-2 items-center">
+                      <i class="nf nf-fa-plus"></i>
+                      <input class="outline-none bg-transparent" placeholder="add class" ${{ onKeyDown: this.onKeyDown }}>
+                  </div>
+              </div>
+            `)}
         </div>
     </div>
   `;

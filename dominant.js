@@ -74,6 +74,13 @@ function insertBeforeWithAnchoredNodes(parentEl, n, n2, c) {
   return c;
 }
 
+// This function can also be safely used on nodes with no anchored nodes.
+function nextSiblingAfterAnchoredNodes(n) {
+  var n2 = n && n.anchoredNodes && n.anchoredNodes.length && n.anchoredNodes[n.anchoredNodes.length - 1];
+  if (n2 && n2.anchoredNodes && n2.anchoredNodes.length) { return nextSiblingAfterAnchoredNodes(n2) }
+  return n2 ? n2.nextSibling : n && n.nextSibling;
+}
+
 // All bindings are represented as instances of this class.
 function Binding(x) {
   // Incorporate all key-values in x when x is an object.
@@ -499,97 +506,110 @@ function Cursor() {}
 Cursor.prototype.toString = function() { return String(this.index) };
 Cursor.prototype.valueOf = function() { return this.index };
 
-function tailOf(n) {
-  if (n.anchoredNodes) { return tailOf(n.anchoredNodes.at(-1)) }
-  return n.nextSibling;
-}
-
 function mapAnchorBindingUpdate() {
   var self = this, i, j, n, meta, nFirst, nSep;
-  var nAnchor = self.target, nTail = tailOf(nAnchor), parentEl = nAnchor.parentNode, updatedNodes;
-  var newArray = [].slice.call(self.get() || []), dirty = false;
+  var nAnchor = self.target, nTail, parentEl = nAnchor.parentNode, updatedNodes;
+  var newArray = [].slice.call(self.get() || []), dirty;
 
   // Initialize to empty arrays/maps if this is the first execution.
   self.lastArray = self.lastArray || [];
   self.lastNodes = self.lastNodes || [];
   self.valueMap = self.valueMap || new Map();
 
-  // If the array hasn't changed, do nothing.
-  if (newArray.length === self.lastArray.length) {
-    for (let i = 0; i < newArray.length; i++) {
-      if (newArray[i] !== self.lastArray[i]) { dirty = true; break }
-    }
-
-    if (!dirty) { return }
+  // Ensure anchoredNodes (if any) are really anchored to parentEl.
+  // Other binding updates may have ejected them.
+  if (
+    nAnchor.anchoredNodes &&
+    nAnchor.anchoredNodes.length &&
+    nAnchor.anchoredNodes[0].parentNode !== parentEl
+  ) {
+    insertBeforeWithAnchoredNodes(
+      parentEl, nAnchor.anchoredNodes, nAnchor.nextSibling);
   }
 
-  // Since the array has changed, update the DOM.
-  updatedNodes = [];
-
-  for (let i = 0; i < newArray.length; i++) {
-    let x = newArray[i];
-    let c = self.valueMap.get(x);
-
-    if (c) {
-      // If the value is already present in the DOM, move it to its new position.
-      if (c.index !== i) {
-        insertBeforeWithAnchoredNodes(parentEl, c.node, nTail);
-        c.index = i;
-      }
-    } else {
-      // Otherwise, create a new node and insert it.
-      c = new Cursor();
-      c.index = i;
-      c.node = appendableNode(self.map(x, c));
-
-      if (c.node) {
-        insertBeforeWithAnchoredNodes(parentEl, c.node, nTail);
-        self.valueMap.set(x, c);
-      }
+  for (i = 0; i < Math.max(self.lastArray.length, newArray.length); i++) {
+    if (i >= self.lastArray.length && i < newArray.length) {
+      dirty = 'tail';
+      break;
     }
 
-    updatedNodes.push(c.node);
-  }
-
-  // Remove nodes that are no longer in the array.
-  for (let [x, c] of self.valueMap) {
-    if (updatedNodes.indexOf(c.node) !== -1) { continue }
-
-    removeWithAnchoredNodes(c.node);
-    self.valueMap.delete(x);
-  }
-
-  // Update separators.
-  if (self.nSep) {
-    // Initialize to empty arrays if this is the first execution.
-    self.lastSepNodes = self.lastSepNodes || [];
-
-    // For each updated node, update the separator after it.
-    for (i = 0; i < newArray.length; i++) {
-      n = updatedNodes[i];
-      nSep = self.lastSepNodes[i];
-
-      if (!nSep) {
-        nSep = self.nSepPool.pop() || self.nSep.cloneNode();
-        self.lastSepNodes.push(nSep);
-      }
-
-      if (n.nextSibling !== nSep) {
-        insertBeforeWithAnchoredNodes(parentEl, nSep, n);
-      }
-    }
-
-    // Remove unused separators.
-    for (i = newArray.length; i < self.lastSepNodes.length; i++) {
-      nSep = self.lastSepNodes[i];
-      removeWithAnchoredNodes(nSep);
-      self.nSepPool.push(nSep);
+    if (self.lastArray[i] !== newArray[i]) {
+      dirty = 'all';
+      break;
     }
   }
 
-  // Remember updated value/nodes.
+  if (dirty === 'all') {
+    (nAnchor.anchoredNodes || [])
+      .forEach(function(n) { removeWithAnchoredNodes(n) });
+
+    nTail = nAnchor.nextSibling;
+  } else if (dirty === 'tail') {
+    nTail = nextSiblingAfterAnchoredNodes(nAnchor);
+  } else {
+    // Nothing to be done.
+    return;
+  }
+
+  updatedNodes = newArray.map(function(x, i) {
+    if (dirty === 'tail' && i < self.lastNodes.length) {
+      return self.lastNodes[i];
+    }
+
+    meta = self.valueMap.get(x) || {};
+    objAssign(meta.cursor = meta.cursor || new Cursor(), { index: i });
+    n = meta.n;
+
+    if (!n) {
+      n = meta.n = self.map(x, meta.cursor);
+
+      n = meta.n = !Array.isArray(n)
+        ? appendableNode(n)
+        : flat(n, 10).map(appendableNode).filter(Boolean);
+    }
+
+    insertBeforeWithAnchoredNodes(parentEl, n, nTail);
+    self.valueMap.set(x, meta);
+    return n;
+  });
+
+  // Remember updated array values and its associated nodes.
   self.lastArray = newArray;
   self.lastNodes = updatedNodes;
+
+  // Copy updatedNodes so we can add separators as well to anchoredNodes,
+  // without affecting updatedNodes/lastNodes.
+  nAnchor.anchoredNodes = [].slice.call(updatedNodes);
+
+  // Create/move separators into place.
+  if (self.nSep) {
+    for (i = 1, j = 0; i < updatedNodes.length; i++) {
+      nSep = self.nSepPool[i - 1];
+      if (!nSep) { nSep = self.nSep.cloneNode(true); self.nSepPool.push(nSep) }
+
+      n = updatedNodes[i];
+      nFirst = Array.isArray(n) ? n[0] : n;
+
+      if (nFirst && nSep.nextSibling !== nFirst) {
+        parentEl.insertBefore(nSep, nFirst);
+
+        // j keeps track of the index drift between updatedNodes and
+        // anchoredNodes caused by the insertion of previous separators.
+        nAnchor.anchoredNodes.splice(i + j++, 0, nSep);
+      }
+    }
+
+    // Remove unused separators from the document.
+    for (; i < self.nSepPool.length; i++) {
+      nSep = self.nSepPool[i];
+      parentEl.removeChild(nSep);
+    }
+
+    // Truncate nSepPool (lets unused separators be garbage collected).
+    self.nSepPool.length = Math.max(0, updatedNodes.length - 1);
+  }
+
+  nAnchor.anchoredNodes = flat(nAnchor.anchoredNodes, 10);
 }
 
 function createTextNode(getFn) {
