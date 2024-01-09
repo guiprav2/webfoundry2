@@ -144,7 +144,7 @@ class FilesSidebar {
     if (isHtml) {
       app.content = d.jsx`<iframe class="flex-1">`;
       app.content.onload = () => app.gloves = new MagicGloves(app.content, app.actions);
-      app.content.src = `/files/${app.currentSite}/${path}`;
+      app.content.src = `files/${app.currentSite}/${path}`;
     } else if (path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.png')) {
       app.content = d.jsx`<div class="flex-1 flex justify-center items-center p-16 bg-[#25272a]">`;
       let img = d.jsx`<img class="shadow-xl">`;
