@@ -6,7 +6,7 @@ class MagicGloves {
     Object.assign(this, { iframe, actions });
     iframe.contentDocument.body.addEventListener('click', this.onClick);
     iframe.contentWindow.addEventListener('keydown', this.onKeyDown);
-    this.sov = new Boo(d.el(MagicOverlay, { s: () => this.s }), () => this.s, { origin: iframe });
+    this.sov = new Boo(d.el(MagicOverlay, { s: () => this.s }), () => this.s, { origin: iframe, transitionClass: 'transition-all' });
   }
 
   onClick = ev => {
@@ -23,6 +23,8 @@ class MagicGloves {
     ev.preventDefault();
     handler(ev);
   };
+
+  destroy() { this.sov.disable() }
 }
 
 class MagicOverlay {
@@ -30,7 +32,7 @@ class MagicOverlay {
   get s() { return d.resolve(this.props.s) }
 
   render = () => d.jsx`
-    <div class="rounded border border-blue-400 opacity-1 z-10 pointer-events-none transition-all">
+    <div class="rounded border border-blue-400 opacity-1 z-10 pointer-events-none">
       <span class="absolute right-0 bottom-0 -mr-1 -mb-2 rounded-lg px-2 py-0.5 empty:hidden whitespace-nowrap font-2xs text-white bg-blue-400/90">
         <i class="nf nf-md-vector_square"></i>
         ${d.text(() => {

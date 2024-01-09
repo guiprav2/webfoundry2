@@ -6,6 +6,7 @@ import lf from 'https://cdn.skypack.dev/localforage';
 import structuredFiles from './structuredFiles.js';
 import { nanoid } from 'https://cdn.skypack.dev/nanoid';
 import { showModal } from './util.js';
+window.lf = lf;
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js', { type: 'module' }).then(function(registration) {
@@ -20,15 +21,10 @@ class App {
     window.app = this;
     this.actions = new ActionHandler(this);
     this.loadSites();
-    requestAnimationFrame(() => {
-      this.iframe.onload = () => {
-        this.gloves = new MagicGloves(this.iframe, this.actions);
-      };
-    });
   }
 
-  get editorWindow() { return this.iframe.contentWindow }
-  get editorDocument() { return this.iframe.contentDocument }
+  get editorWindow() { return this.content.contentWindow }
+  get editorDocument() { return this.content.contentDocument }
   get s() { return this.gloves?.s }
   set s(x) { this.gloves.s = x }
 
@@ -44,7 +40,7 @@ class App {
       </div>
       ${d.portal(() => this.sidebar)}
     </div>
-    ${this.iframe = d.jsx`<iframe class="flex-1">`}
+    ${d.portal(() => this.content)}
   `;
 
   menuBtn = (label, key) => d.jsx`
@@ -126,8 +122,30 @@ class SitesSidebar {
 }
 
 class FilesSidebar {
-  openFile = path => {
-    app.iframe.src = `/files/${app.currentSite}/${path}`;
+  openFile = async path => {
+    app.gloves?.destroy?.();
+    let isHtml = path.endsWith('.html');
+    if (isHtml) {
+      app.content = d.jsx`<iframe class="flex-1">`;
+      app.content.onload = () => app.gloves = new MagicGloves(app.content, app.actions);
+      app.content.src = `/files/${app.currentSite}/${path}`;
+    } else if (path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.png')) {
+      app.content = d.jsx`<div class="flex-1 flex justify-center items-center p-16 bg-[#25272a]">`;
+      let img = d.jsx`<img class="shadow-xl">`;
+      img.style.maxWidth = img.style.maxHeight = 'calc(100vh - 8rem)';
+      img.src = `files/${app.currentSite}/${path}`;
+      app.content.append(img);
+    } else {
+      app.content = d.jsx`<div class="flex-1">`;
+      let editor = ace.edit(app.content);
+      editor.setTheme('ace/theme/monokai');
+      editor.setFontSize('16px');
+      let mode = path.endsWith('.js') ? 'javascript' : path.endsWith('.css') ? 'css' : null;
+      mode && editor.session.setMode(`ace/mode/${mode}`);
+      let reader = new FileReader();
+      reader.onload = () => editor.session.setValue(reader.result);
+      reader.readAsText(await lf.getItem(`file:${app.currentSite}:${path}`), 'utf-8');
+    }
   };
 
   newFile = async path => {
@@ -206,16 +224,16 @@ class FilesSidebar {
             ${d.map(() => app.files, ([name, path, isDir]) => d.jsx`
                 <a href="#" ${{
                     class: ['flex gap-2 justify-between items-center rounded px-3 py-1', () => `ml-${(path.split('/').length - 1) * 3}`],
-                    onClick: () => !isDir && this.openFile(path ? `${path}/${name}` : name),
+                    onClick: () => !isDir && this.openFile(path ? `${path}${name}` : name),
                 }}>
                     <div class="flex gap-2 items-center">
                         <i ${{ class: ['nf', () => `nf-fa-${isDir ? 'folder' : 'file'}`] }}></i>
                         <span>${name}</span>
                     </div>
                     <div class="relative top-[-1px] flex gap-2">
-                        ${isDir && d.jsx`<button class="nf nf-fa-plus" ${{ onClick: () => this.newFile(path ? `${path}/${name}` : name) }}></button>`}
-                        <button class="nf nf-fa-pencil" ${{ onClick: () => this.renameFile(path ? `${path}/${name}` : name, isDir) }}></button>
-                        <button class="nf nf-fa-trash" ${{ onClick: () => this.rmFile(path ? `${path}/${name}` : name, isDir) }}></button>
+                        ${isDir && d.jsx`<button class="nf nf-fa-plus" ${{ onClick: () => this.newFile(path ? `${path}${name}` : name) }}></button>`}
+                        <button class="nf nf-fa-pencil" ${{ onClick: () => this.renameFile(path ? `${path}${name}` : name, isDir) }}></button>
+                        <button class="nf nf-fa-trash" ${{ onClick: () => this.rmFile(path ? `${path}${name}` : name, isDir) }}></button>
                     </div>
                 </a>
             `)}

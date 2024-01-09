@@ -49,7 +49,6 @@ function buildNestedStructure(paths) {
   const root = [];
 
   sortPaths(paths).forEach(path => {
-    console.log(path);
     const parts = path.split('/').filter(Boolean);
     let currentLevel = root;
 
