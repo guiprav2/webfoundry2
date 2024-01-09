@@ -12,7 +12,7 @@ self.addEventListener('fetch', event => {
     const fileKey = 'file:' + site + ':' + parts.join('/');
 
     event.respondWith(lf.getItem(fileKey).then(file => {
-      if (file) {
+      if (file != null) {
         return new Response(file);
       } else {
         return new Response('File not found', { status: 404 });
