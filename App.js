@@ -122,6 +122,22 @@ class SitesSidebar {
 }
 
 class FilesSidebar {
+  constructor() { window.filesSidebar = this }
+  expandedPaths = new Set();
+
+  newFile = async path => {
+    let [btn, detail] = await showModal(d.el(NewDialog));
+    if (btn !== 'ok') { return }
+    let [type, name] = detail;
+    let prefix = `file:${app.currentSite}:`;
+    if (path) { prefix += `${path}/`; this.expandedPaths.add(`${path}/`) }
+    switch (type) {
+      case 'file': await lf.setItem(`${prefix}${name}`, ''); break;
+      case 'folder': await lf.setItem(`${prefix}${name}/.keep`, ''); break;
+    }
+    await app.loadFiles();
+  };
+
   openFile = async path => {
     app.gloves?.destroy?.();
     let isHtml = path.endsWith('.html');
@@ -148,18 +164,9 @@ class FilesSidebar {
     }
   };
 
-  newFile = async path => {
-    let [btn, detail] = await showModal(d.el(NewDialog));
-    if (btn !== 'ok') { return }
-    let [type, name] = detail;
-    let prefix = `file:${app.currentSite}:`;
-    if (path) { prefix += `${path}/` }
-    switch (type) {
-      case 'file': await lf.setItem(`${prefix}${name}`, ''); break;
-      case 'folder': await lf.setItem(`${prefix}${name}/.keep`, ''); break;
-    }
-    await app.loadFiles();
-  };
+  togglePath(path) {
+    if (this.expandedPaths.has(path)) { this.expandedPaths.delete(path) } else { this.expandedPaths.add(path) }
+  }
 
   renameFile = async (path, isDir) => {
     let [btn, detail] = await showModal(d.el(RenameDialog, { name: path.split('/').pop() }));
@@ -223,8 +230,15 @@ class FilesSidebar {
             </div>
             ${d.map(() => app.files, ([name, path, isDir]) => d.jsx`
                 <a href="#" ${{
-                    class: ['flex gap-2 justify-between items-center rounded px-3 py-1', () => `ml-${(path.split('/').length - 1) * 3}`],
-                    onClick: () => !isDir && this.openFile(path ? `${path}${name}` : name),
+                    class: [
+                      'flex gap-2 justify-between items-center rounded px-3 py-1',
+                      () => `ml-${(path.split('/').length - 1) * 3}`,
+                      () => path && !this.expandedPaths.has(path) && 'hidden',
+                    ],
+                    onClick: ev => {
+                      if (ev.target.tagName === 'BUTTON') { return }
+                      !isDir ? this.openFile(path ? `${path}${name}` : name) : this.togglePath(path ? `${path}${name}/` : `${name}/`)
+                    },
                 }}>
                     <div class="flex gap-2 items-center">
                         <i ${{ class: ['nf', () => `nf-fa-${isDir ? 'folder' : 'file'}`] }}></i>
