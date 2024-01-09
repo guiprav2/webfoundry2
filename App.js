@@ -164,6 +164,17 @@ class FilesSidebar {
     }
   };
 
+  expandedPath(path) {
+    if (!path) { return true }
+    let paths = [];
+    let currentPath = '';
+    for (let part of path.split('/').slice(0, -1)) {
+      currentPath += `${part}/`;
+      paths.push(currentPath);
+    }
+    return paths.every(x => this.expandedPaths.has(x));
+  }
+
   togglePath(path) {
     if (this.expandedPaths.has(path)) { this.expandedPaths.delete(path) } else { this.expandedPaths.add(path) }
   }
@@ -233,7 +244,7 @@ class FilesSidebar {
                     class: [
                       'flex gap-2 justify-between items-center rounded px-3 py-1',
                       () => `ml-${(path.split('/').length - 1) * 3}`,
-                      () => path && !this.expandedPaths.has(path) && 'hidden',
+                      () => !this.expandedPath(path) && 'hidden',
                     ],
                     onClick: ev => {
                       if (ev.target.tagName === 'BUTTON') { return }
