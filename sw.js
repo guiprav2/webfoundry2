@@ -7,8 +7,7 @@ self.addEventListener('fetch', event => {
     const path = url.pathname;
     
     // Extract the file name and prepend with 'file:' to match the localForage key
-    console.log(path);
-    const parts = path.slice('/files/'.length).split('/');
+    const parts = path.slice(path.indexOf('/files/') + '/files/'.length).split('/');
     const site = parts.shift();
     const fileKey = 'file:' + site + ':' + parts.join('/');
 
